@@ -19,6 +19,7 @@ X(Twitter) 風メッセージアプリ。Spring Boot の REST API + React SPA。
 ## バージョン（固定）
 
 新しいものが出ても勝手に上げない。上げるときは ADR に理由を残す。
+この方針は Renovate の設定（`renovate.json`）で機械的に強制している。詳細は後述。
 
 | 対象 | バージョン |
 |---|---|
@@ -33,6 +34,36 @@ X(Twitter) 風メッセージアプリ。Spring Boot の REST API + React SPA。
 **ホストの Node は v16.5.0 で Vite 8 の要件（20.19+）を満たさない。** npm 系のコマンドは必ず `docker compose run --rm web ...` 経由で実行すること。ホストで `npm` を直接叩かない。
 
 依存のバージョンは `backend/gradle/libs.versions.toml`（Version Catalog）と `frontend/package.json` に集約する。個別の `build.gradle.kts` に直接バージョンを書かない。
+
+### 依存更新（Renovate）
+
+`renovate.json` で運用する。毎週月曜の早朝（JST）に走る。
+
+| 更新の種類 | 挙動 |
+|---|---|
+| **脆弱性修正** | スケジュールと承認を迂回して**即座に PR**。最優先でマージする |
+| patch / minor（一般） | 自動で PR を作る。CI が green なら通してよい |
+| **major**（全て） | PR を作らない。**Dependency Dashboard でチェックを入れて初めて PR 化** |
+| Spring の minor | 同上（4.0→4.1 で挙動が変わった実績があるため） |
+| Docker ベースイメージの major/minor | 同上（Java 25 / Node 24 / PostgreSQL 18 の固定を守る） |
+
+**major を採用するときは必ず `docs/adr/` に理由を書く。** Dashboard のチェックを入れるだけで
+済ませない。特に次はプロジェクトの前提そのものなので、上げる判断は慎重に行う:
+
+- **Java 25 → 26**: 26 は non-LTS。Spring Boot の first-class support は 25。
+- **Node 24 → 26**: 24 が Active LTS。26 の LTS 入りは 2026-10。
+- **Spring Boot 4 → 5**: 影響範囲が全体に及ぶ。
+- **React 19 → 20**: フロント全体の書き換えが発生しうる。
+
+Actions は `helpers:pinGitHubActionDigests` で SHA 固定している。public リポジトリなので
+タグの差し替えによるサプライチェーン攻撃を防ぐため。読みにくくなるが外さない。
+
+`renovate.json` を変更したら検証する:
+
+```bash
+docker run --rm -v "$PWD:/w" -w /w node:24-alpine \
+  npx --yes --package renovate -- renovate-config-validator renovate.json
+```
 
 ---
 
