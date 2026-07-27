@@ -83,6 +83,12 @@ erDiagram
 `citext` 拡張を使い、`username` と `email` の一意性を**大文字小文字を区別せず**判定する。
 `LOWER()` の関数インデックスでも実現できるが、`citext` の方が検索側の書き漏れによるバグが起きない。
 
+> **JPA 側の注意**: `citext` は Hibernate が知らない型なので、Entity の `@Column` に
+> `columnDefinition = "citext"` を明示しないと `ddl-auto=validate` が `varchar` を期待して
+> 起動時に落ちる。エラーは
+> `wrong column type encountered in column [email] in table [users]; found [citext ...]`。
+> この 1 行を書き忘れるとアプリが起動しないので、citext カラムを増やすときは必ず付けること。
+
 > `bio` は `NULL` を許さず空文字を既定にする。`NULL` と `''` の 2 状態があると、
 > アプリ側の分岐が増えるだけで意味的な違いがないため。
 
