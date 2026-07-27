@@ -101,5 +101,6 @@ gh pr merge --merge
 
 - `main` への直 push
 - `git push --force`（共有ブランチ）
-- 生成物（`frontend/src/api/generated/`）のコミット — `.gitignore` 済み
 - `.env` のコミット — `.gitignore` の先頭で防いでいるが、`git add -f` で強制追加しない
+- 生成物（`frontend/src/api/generated/`）を**コミットから外す**こと — これは追跡対象。
+  外すと CI の `contract-drift` 検査が素通りする

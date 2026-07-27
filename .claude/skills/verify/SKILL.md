@@ -58,6 +58,15 @@ docker compose --profile e2e run --rm e2e npx playwright test
 
 失敗時は `playwright-report/` を開く（`.gitignore` 済み）。
 
+## レベル 4.5: 仕様と生成物のズレ
+
+```bash
+docker compose run --rm web npm run gen:api
+git diff --stat -- frontend/src/api/generated
+```
+
+差分が出たら、`openapi.yaml` を直したあと型を再生成し忘れている。生成物もコミットする。
+
 ## レベル 5: 手動確認（BFF なし構成の要所）
 
 ブラウザの DevTools で確認する。ここは自動テストで見落としやすい。

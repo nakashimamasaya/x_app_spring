@@ -8,7 +8,7 @@ X(Twitter) 風メッセージアプリ。Spring Boot の REST API + React SPA。
 
 ## 絶対に守るルール
 
-1. **`openapi.yaml` が API の単一の真実。** エンドポイントやスキーマを変えるときは、必ず `api/openapi.yaml` を先に直す。実装から仕様を書き起こす方向は禁止。変更後は必ず「型再生成 → 契約テスト実行」まで行う（`/spec-first` スキル参照）。
+1. **`openapi.yaml` が API の単一の真実。** エンドポイントやスキーマを変えるときは、必ず `api/openapi.yaml` を先に直す。実装から仕様を書き起こす方向は禁止。変更後は必ず「型再生成 → 生成物をコミット → 契約テスト実行」まで行う（`/spec-first` スキル参照）。生成物 `frontend/src/api/generated/` は**追跡対象**。ignore すると CI の drift 検査が素通りする。
 2. **`.env` をコミットしない。** public リポジトリのため、一度 push した秘密情報は履歴から消しても漏洩したものとして扱うしかない。秘密の値は `.env` と環境変数のみ。`application.yaml` には `${JWT_SECRET}` のような参照だけを書き、デフォルト値にも本物を書かない。
 3. **Entity を HTTP レスポンスに直接返さない。** 必ず `record` の DTO に詰め替える。`email` / `password_hash` / `deleted_at` は DTO に含めない。
 4. **LLM 生成コードは単独コミットにする。** 手書き分と混ぜない（理由は「Git 運用」参照）。
@@ -45,7 +45,8 @@ backend/src/main/java/com/example/xapp/
   common/                 例外, ProblemDetail, カーソルページング, 設定
   auth/  user/  post/  timeline/
 frontend/src/
-  api/                    生成された型 + openapi-fetch クライアント
+  api/generated/          openapi.yaml から生成した型（★ git で追跡する）
+  api/                    openapi-fetch クライアント
   features/{auth,post,timeline,user}/
 tools/llm/                ローカル LLM 呼び出し CLI とプロンプト
 .claude/skills/           作業手順のスキル

@@ -30,8 +30,10 @@ npm-debug.log*
 yarn-error.log*
 .pnpm-store/
 
-# OpenAPI から再生成できるため追跡しない（CI の contract-drift ジョブで検証）
-frontend/src/api/generated/
+# 注: frontend/src/api/generated/ は「追跡する」。
+# CI の contract-drift ジョブが再生成して git diff で仕様とのズレを検出するため、
+# ignore してしまうと差分が出ず検査が素通りする。
+# レビュー時のノイズは .gitattributes の linguist-generated で抑える。
 
 # === Test / E2E ====================================================
 playwright-report/

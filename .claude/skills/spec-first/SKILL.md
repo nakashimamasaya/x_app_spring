@@ -11,10 +11,14 @@ description: api/openapi.yaml を変更するときの手順と波及チェッ�
 
 1. `api/openapi.yaml` を編集する
 2. lint を通す
-3. TypeScript 型を再生成する
+3. TypeScript 型を再生成し、**生成物もコミットする**
 4. バックエンドの契約テストを更新する
 5. 実装を追従させる
 6. 契約テストが green になることを確認する
+
+`frontend/src/api/generated/` は git の追跡対象。ignore すると CI の `contract-drift`
+ジョブが `git diff` で差分を検出できず、検査が素通りしてしまう。
+レビュー時のノイズは `.gitattributes` の `linguist-generated` で抑えている。
 
 実装を先に変えると、仕様と実装が食い違ったまま気づかず進む。CI の `contract-drift` ジョブが
 検出するが、そこで気づくのは遅い。
@@ -39,7 +43,7 @@ docker compose run --rm web npm run gen:api
 - [ ] `api/openapi.yaml` の `examples` を更新した
       （E2E のテストデータと MSW のモックがこれを元にしている）
 - [ ] `docker compose run --rm web npm run gen:api` を実行した
-- [ ] `frontend/src/api/generated/` の diff を確認した（追跡外だが目視する）
+- [ ] `frontend/src/api/generated/` の diff を確認し、**コミットに含めた**
 - [ ] バックエンドの DTO のフィールド名がスキーマと**完全一致**している（camelCase のまま）
 - [ ] 統合テストに新しいエンドポイントのケースを足した（正常系・認可エラー・バリデーションエラー）
 - [ ] エラーレスポンスが RFC 9457 Problem Details の形になっている
