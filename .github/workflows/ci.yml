@@ -51,8 +51,17 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '24'
+      # redocly は警告だけなら exit 0 を返すため、それだけでは CI が素通りする。
+      # 仕様は単一の真実なので、警告も残さない運用にする。
+      # 意図的に無視するルールは redocly.yaml に理由付きで書くこと。
       - name: Lint OpenAPI spec
-        run: npx --yes @redocly/cli@latest lint api/openapi.yaml
+        run: |
+          set -o pipefail
+          npx --yes @redocly/cli@latest lint api/openapi.yaml | tee /tmp/lint.log
+          if grep -qiE 'you have [0-9]+ (warning|problem)' /tmp/lint.log; then
+            echo "::error::OpenAPI lint に警告があります。解消するか redocly.yaml に理由を書いて無効化してください。"
+            exit 1
+          fi
 
   backend:
     needs: detect
@@ -94,8 +103,9 @@ jobs:
       - run: npm test
 
   # openapi.yaml と生成された TS 型がズレていないか検証する。
-  # 生成物は .gitignore 済みだが、CI で毎回生成し直して差分が無いことを確認する
-  # ことで「仕様を直したのに型を再生成し忘れた」を検出できる。
+  # 生成物は git の追跡対象。CI で毎回生成し直して差分が無いことを確認することで
+  # 「仕様を直したのに型を再生成し忘れた」を検出できる。
+  # （ignore してしまうと git diff が差分を報告せず、この検査が素通りする）
   contract-drift:
     needs: detect
     if: needs.detect.outputs.openapi == 'true' && needs.detect.outputs.frontend == 'true'
