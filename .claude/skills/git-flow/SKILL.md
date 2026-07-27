@@ -6,6 +6,32 @@ description: このリポジトリのブランチ作成・コミット分割・P
 # Git 運用
 
 `main` は保護されている（直 push 禁止・PR 必須・CI 必須）。
+GitHub 側でも **merge commit のみ**に制限済み（squash / rebase は無効）。
+マージ済みブランチはリモートから自動削除される。
+
+## ⚠ 必須ステータスチェックはフェーズごとに追加する
+
+ブランチ保護の必須チェックは、**存在するジョブしか指定できない**。
+`backend/` や `frontend/` が無い段階で指定するとマージが永久にブロックされるため、
+フェーズ0 時点では `secrets` のみを必須にしてある。
+
+**ジョブが動き出したフェーズで必須に追加すること。忘れるとテストが赤でもマージできてしまう。**
+
+| 追加するタイミング | 必須に加えるチェック |
+|---|---|
+| フェーズ1（`api/openapi.yaml` 作成後） | `openapi` |
+| フェーズ2（`backend/build.gradle.kts` 作成後） | `backend` |
+| フロントエンド着手後 | `frontend`, `contract-drift` |
+
+```bash
+# 現在の必須チェックを確認
+gh api repos/nakashimamasaya/x_app_spring/branches/main/protection \
+  --jq '.required_status_checks.contexts'
+
+# 追加（既存分も併記して丸ごと差し替える）
+gh api -X PATCH repos/nakashimamasaya/x_app_spring/branches/main/protection/required_status_checks \
+  -f 'contexts[]=secrets' -f 'contexts[]=openapi'
+```
 
 ## 実行権限
 
