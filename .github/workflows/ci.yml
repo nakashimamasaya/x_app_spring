@@ -1,0 +1,140 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # backend/ や frontend/ はフェーズが進むにつれて追加される。
+  # 存在しないうちにジョブが落ちないよう、ここで有無を判定して条件分岐する。
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      openapi: ${{ steps.check.outputs.openapi }}
+      backend: ${{ steps.check.outputs.backend }}
+      frontend: ${{ steps.check.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: check
+        run: |
+          echo "openapi=$([ -f api/openapi.yaml ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "backend=$([ -f backend/build.gradle.kts ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "frontend=$([ -f frontend/package.json ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+  # public リポジトリなので、秘密情報の混入は他の何よりも先に落とす。
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
+            detect --source=/repo --redact --exit-code 1 --verbose
+
+  openapi:
+    needs: detect
+    if: needs.detect.outputs.openapi == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+      - name: Lint OpenAPI spec
+        run: npx --yes @redocly/cli@latest lint api/openapi.yaml
+
+  backend:
+    needs: detect
+    if: needs.detect.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v5
+      # Testcontainers は runner の Docker デーモンをそのまま使う
+      - name: Test
+        run: ./gradlew :backend:test --no-daemon
+      - uses: actions/upload-artifact@v5
+        if: failure()
+        with:
+          name: backend-test-report
+          path: backend/build/reports/tests/
+
+  frontend:
+    needs: detect
+    if: needs.detect.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run gen:api
+      - run: npm run typecheck
+      - run: npm test
+
+  # openapi.yaml と生成された TS 型がズレていないか検証する。
+  # 生成物は .gitignore 済みだが、CI で毎回生成し直して差分が無いことを確認する
+  # ことで「仕様を直したのに型を再生成し忘れた」を検出できる。
+  contract-drift:
+    needs: detect
+    if: needs.detect.outputs.openapi == 'true' && needs.detect.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - name: Regenerate types and fail on drift
+        working-directory: frontend
+        run: |
+          npm run gen:api
+          if ! git diff --quiet -- src/api/generated; then
+            echo "::error::openapi.yaml と生成済みの型がズレています。'npm run gen:api' を実行してコミットしてください。"
+            git diff -- src/api/generated
+            exit 1
+          fi
+
+  # E2E は所要時間が長いため PR では走らせず、main への merge 後のみ実行する。
+  e2e:
+    needs: [detect, backend, frontend]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.detect.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Start stack
+        run: |
+          cp .env.example .env
+          sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -base64 48)|" .env
+          docker compose up -d --build --wait
+      - name: Run Playwright
+        run: docker compose --profile e2e run --rm e2e npx playwright test
+      - uses: actions/upload-artifact@v5
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
