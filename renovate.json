@@ -1,0 +1,78 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "timezone": "Asia/Tokyo",
+  "schedule": ["before 6am on monday"],
+  "semanticCommits": "enabled",
+  "semanticCommitType": "chore",
+  "semanticCommitScope": "deps",
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "rebaseWhen": "conflicted",
+  "dependencyDashboard": true,
+  "dependencyDashboardTitle": "Renovate: 依存更新ダッシュボード",
+  "packageRules": [
+    {
+      "description": "メジャー更新は自動で PR を作らない。Dependency Dashboard でチェックを入れて初めて PR が作られる。CLAUDE.md のバージョン固定方針どおり、採用時は docs/adr/ に理由を残す。Java 25 LTS→26（non-LTS）、Node 24 LTS→26、Spring Boot 4→5、React 19→20 をここで止める。",
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Spring はマイナーでも挙動が変わる（4.0→4.1 で gRPC 自動設定や SSRF 対策が入った）ため手動承認にする",
+      "matchPackageNames": ["/^org\\.springframework/"],
+      "matchUpdateTypes": ["minor"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Spring 関連はまとめて 1 PR にする。バラバラに上げると相互のバージョン整合が崩れる。",
+      "matchPackageNames": ["/^org\\.springframework/"],
+      "groupName": "spring"
+    },
+    {
+      "description": "React 本体と型定義はまとめて上げる",
+      "matchPackageNames": ["react", "react-dom", "/^@types\\/react/"],
+      "groupName": "react"
+    },
+    {
+      "description": "Vite とそのプラグイン、Vitest はまとめて上げる",
+      "matchPackageNames": ["vite", "/^@vitejs\\//", "vitest", "/^@vitest\\//"],
+      "groupName": "vite"
+    },
+    {
+      "description": "テスト系ライブラリはまとめて上げる。本番影響が無いのでノイズを減らす。",
+      "matchPackageNames": [
+        "/^org\\.junit/",
+        "/^org\\.assertj/",
+        "/^org\\.mockito/",
+        "/^org\\.testcontainers/",
+        "/^@testing-library\\//",
+        "/^@playwright\\//",
+        "playwright",
+        "msw"
+      ],
+      "groupName": "test tooling"
+    },
+    {
+      "description": "GitHub Actions はまとめて 1 PR にする",
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions"
+    },
+    {
+      "description": "Docker のベースイメージは Java 25 / Node 24 / PostgreSQL 18 の固定を守る。パッチ更新のみ自動で受け入れる。",
+      "matchManagers": ["dockerfile", "docker-compose"],
+      "matchUpdateTypes": ["major", "minor"],
+      "dependencyDashboardApproval": true
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "description": "脆弱性修正だけはスケジュールと手動承認の両方を迂回して即座に PR を作る",
+    "labels": ["security"],
+    "dependencyDashboardApproval": false,
+    "schedule": ["at any time"]
+  },
+  "osvVulnerabilityAlerts": true
+}
