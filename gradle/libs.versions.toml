@@ -1,0 +1,50 @@
+# 依存バージョンはここに集約する。個別の build.gradle.kts に直接書かない。
+# 更新は Renovate が提案する。major と Spring の minor は Dependency Dashboard 承認制。
+
+[versions]
+java = "25"
+springBoot = "4.1.0"
+# Spring Boot 4.1 の BOM が管理しないものだけここでバージョンを指定する
+swaggerRequestValidator = "2.44.9"
+# Bucket4j は JDK ごとに artifact が分かれている。無印の bucket4j-core は 8.10.1 で
+# 更新が止まっており、JDK 17 以降は bucket4j_jdk17-core が現行（Java 25 でもこれを使う）。
+bucket4j = "8.19.0"
+
+[libraries]
+# BOM。これを platform() で取り込むことで、以下の starter 群のバージョンが揃う。
+# io.spring.dependency-management プラグインは使わない（Gradle 9 との互換性リスクを避けるため、
+# Gradle 標準の platform() で同じことを実現する）。
+spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "springBoot" }
+
+# --- Spring Boot starters（バージョンは BOM が管理する） ---
+spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
+spring-boot-starter-data-jpa = { module = "org.springframework.boot:spring-boot-starter-data-jpa" }
+spring-boot-starter-validation = { module = "org.springframework.boot:spring-boot-starter-validation" }
+spring-boot-starter-security = { module = "org.springframework.boot:spring-boot-starter-security" }
+spring-boot-starter-oauth2-resource-server = { module = "org.springframework.boot:spring-boot-starter-oauth2-resource-server" }
+spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
+
+# --- DB ---
+# Spring Boot 4 は自動設定をモジュール分割した。flyway-core を直接入れても
+# 自動設定は有効にならず、マイグレーションが静かにスキップされる。
+# 必ず spring-boot-starter-flyway を使うこと。
+spring-boot-starter-flyway = { module = "org.springframework.boot:spring-boot-starter-flyway" }
+flyway-postgresql = { module = "org.flywaydb:flyway-database-postgresql" }
+postgresql = { module = "org.postgresql:postgresql" }
+
+# --- レート制限（認証系エンドポイント用。BFF を挟まないため必須） ---
+bucket4j-core = { module = "com.bucket4j:bucket4j_jdk17-core", version.ref = "bucket4j" }
+
+# --- テスト ---
+spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
+spring-security-test = { module = "org.springframework.security:spring-security-test" }
+spring-boot-testcontainers = { module = "org.springframework.boot:spring-boot-testcontainers" }
+# Testcontainers 2.0 で artifact 名が変わった（postgresql -> testcontainers-postgresql）。
+# 1.x の座標のままだと解決に失敗する。バージョンは Boot の BOM が 2.0.5 を指定する。
+testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql" }
+testcontainers-junit = { module = "org.testcontainers:testcontainers-junit-jupiter" }
+# レスポンスが openapi.yaml に適合しているか検証する契約テスト用
+swagger-request-validator-mockmvc = { module = "com.atlassian.oai:swagger-request-validator-mockmvc", version.ref = "swaggerRequestValidator" }
+
+[plugins]
+spring-boot = { id = "org.springframework.boot", version.ref = "springBoot" }

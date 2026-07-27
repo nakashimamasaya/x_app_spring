@@ -6,6 +6,9 @@ gradlew text eol=lf
 *.sh text eol=lf
 gradle/wrapper/gradle-wrapper.jar binary
 
+# Windows のバッチファイルは CRLF でないと正しく動かない場合がある
+*.bat text eol=crlf
+
 # バイナリ
 *.png binary
 *.jpg binary
