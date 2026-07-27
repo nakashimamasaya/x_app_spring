@@ -1,0 +1,59 @@
+# === Secrets: 最優先 ===============================================
+# public リポジトリのため、一度 push した秘密情報は漏洩したものとして扱うしかない。
+# .env は絶対に追跡しない。コミットしてよいのは .env.example のみ。
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.jks
+secrets/
+
+# === Java / Gradle =================================================
+backend/build/
+backend/.gradle/
+.gradle/
+build/
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+*.log
+hs_err_pid*
+
+# === Node / Vite ===================================================
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+node_modules/
+npm-debug.log*
+yarn-error.log*
+.pnpm-store/
+
+# OpenAPI から再生成できるため追跡しない（CI の contract-drift ジョブで検証）
+frontend/src/api/generated/
+
+# === Test / E2E ====================================================
+playwright-report/
+test-results/
+blob-report/
+.playwright/
+coverage/
+
+# === LLM 作業ファイル ==============================================
+# タスクカードは作業中の中間物。_smoke.md のみ例外で追跡する。
+tools/llm/tasks/*
+!tools/llm/tasks/_smoke.md
+tools/llm/.cache/
+
+# === Claude Code ===================================================
+# 個人の権限許可設定。マシン固有の絶対パスが入るため共有しない。
+.claude/settings.local.json
+
+# === OS / Editor ===================================================
+.DS_Store
+.idea/
+*.iml
+.vscode/*
+!.vscode/extensions.json
+*.swp

@@ -1,0 +1,16 @@
+# macOS ホストと Linux コンテナ間で改行コードが揺れないよう正規化する
+* text=auto eol=lf
+
+# Gradle wrapper は実行可能かつ LF 必須
+gradlew text eol=lf
+*.sh text eol=lf
+gradle/wrapper/gradle-wrapper.jar binary
+
+# バイナリ
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary
+
+# 生成物は diff とレビュー対象から外す
+frontend/src/api/generated/** linguist-generated=true
