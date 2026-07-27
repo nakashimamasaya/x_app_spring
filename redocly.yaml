@@ -1,0 +1,17 @@
+# Redocly の設定。`npx @redocly/cli lint` が自動で読み込む。
+#
+# CI では警告が 1 件でもあれば失敗させる運用にしている（.github/workflows/ci.yml 参照）。
+# そのため「意図的に無視するルール」はここに理由付きで明記し、それ以外は全て解消すること。
+
+apis:
+  main:
+    root: api/openapi.yaml
+
+extends:
+  - recommended
+
+rules:
+  # このプロジェクトはローカル Docker 環境専用で、公開サーバーを持たない。
+  # 実在しない本番 URL を書く方が仕様として不正確になるため、このルールは無効化する。
+  # デプロイ先が決まったら servers に追記した上で、この行を削除すること。
+  no-server-example.com: off
