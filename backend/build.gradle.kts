@@ -26,7 +26,7 @@ dependencies {
     implementation(libs.spring.boot.starter.oauth2.resource.server)
     implementation(libs.spring.boot.starter.actuator)
 
-    implementation(libs.flyway.core)
+    implementation(libs.spring.boot.starter.flyway)
     implementation(libs.bucket4j.core)
 
     runtimeOnly(libs.flyway.postgresql)

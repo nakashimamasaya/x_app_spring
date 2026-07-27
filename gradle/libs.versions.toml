@@ -25,7 +25,10 @@ spring-boot-starter-oauth2-resource-server = { module = "org.springframework.boo
 spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
 
 # --- DB ---
-flyway-core = { module = "org.flywaydb:flyway-core" }
+# Spring Boot 4 は自動設定をモジュール分割した。flyway-core を直接入れても
+# 自動設定は有効にならず、マイグレーションが静かにスキップされる。
+# 必ず spring-boot-starter-flyway を使うこと。
+spring-boot-starter-flyway = { module = "org.springframework.boot:spring-boot-starter-flyway" }
 flyway-postgresql = { module = "org.flywaydb:flyway-database-postgresql" }
 postgresql = { module = "org.postgresql:postgresql" }
 

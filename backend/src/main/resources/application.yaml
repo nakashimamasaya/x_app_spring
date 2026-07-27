@@ -1,0 +1,58 @@
+spring:
+  application:
+    name: x-app-spring
+
+  datasource:
+    # 秘密の値は書かない。環境変数のみを参照する（CLAUDE.md の絶対ルール）。
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/xapp}
+    username: ${POSTGRES_USER:xapp}
+    password: ${POSTGRES_PASSWORD}
+
+  jpa:
+    # スキーマは Flyway が単独で管理する。Hibernate には一切触らせない
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  threads:
+    virtual:
+      enabled: true
+
+server:
+  port: ${API_PORT:8080}
+  servlet:
+    context-path: /api/v1
+  error:
+    # スタックトレースや内部識別子をレスポンスに出さない
+    include-stacktrace: never
+    include-message: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+app:
+  jwt:
+    # 32 バイト以上のランダム値。openssl rand -base64 48 で生成する
+    secret: ${JWT_SECRET}
+    access-token-ttl: ${JWT_ACCESS_TOKEN_TTL:PT15M}
+    refresh-token-ttl: ${JWT_REFRESH_TOKEN_TTL:P14D}
+  cors:
+    # ワイルドカードは使わない。BFF を挟まない構成では必須の設定
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  pagination:
+    default-limit: 20
+    max-limit: 100

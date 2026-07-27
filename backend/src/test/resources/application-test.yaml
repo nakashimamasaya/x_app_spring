@@ -1,0 +1,30 @@
+# テスト専用の設定。DB 接続は Testcontainers の @ServiceConnection が上書きするため書かない。
+#
+# ここに書く値はすべてダミー。本物の秘密は絶対に置かない（テストコードも public リポジトリに載る）。
+
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    # テストではクエリのN+1を発見しやすくするため、生成SQLを検証可能にしておく
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+app:
+  jwt:
+    # テスト用のダミー鍵。HS256 に必要な 32 バイト以上を満たすだけの固定値。
+    secret: test-only-dummy-signing-key-not-a-real-secret-0123456789
+    access-token-ttl: PT15M
+    refresh-token-ttl: P14D
+  cors:
+    allowed-origins: http://localhost:5173
+  pagination:
+    default-limit: 20
+    max-limit: 100
+
+logging:
+  level:
+    org.testcontainers: WARN
+    com.github.dockerjava: WARN
