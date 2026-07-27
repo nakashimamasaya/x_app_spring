@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew:*)",
+      "Bash(docker compose:*)",
+      "Bash(docker run --rm -v *zricethezav/gitleaks*:*)",
+      "Bash(python3 tools/llm/gen.py:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git switch:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh repo view:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)",
+      "Bash(curl -s http://localhost:8080/*)",
+      "Bash(curl -s http://192.168.11.35:11434/*)",
+      "Bash(javac:*)",
+      "Bash(java -version)"
+    ],
+    "ask": [
+      "Bash(git push:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(gh repo create:*)",
+      "Bash(gh api:*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./**/*.pem)",
+      "Read(./**/*.key)",
+      "Bash(git push --force:*)",
+      "Bash(git add -f:*)"
+    ]
+  }
+}
