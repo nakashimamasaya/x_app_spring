@@ -1,0 +1,1126 @@
+openapi: 3.1.0
+
+info:
+  title: x_app_spring API
+  version: 1.0.0
+  summary: X(Twitter) 風メッセージアプリの REST API
+  description: |
+    ブラウザの SPA から**直接**呼ばれる API（BFF を経由しない）。
+
+    ## このドキュメントの位置づけ
+
+    このファイルが API 契約の**単一の真実**である。実装を変えるときは必ずここを先に直す。
+    実装から仕様を書き起こす方向は行わない。
+
+    ## 認証
+
+    - `POST /auth/login` で **Access Token**（JWT / 短命）をレスポンスボディで受け取る
+    - **Refresh Token** は HttpOnly Cookie で配られる。JavaScript からは読めない
+    - 以降のリクエストは `Authorization: Bearer <accessToken>` を付ける
+    - Access Token が失効したら `POST /auth/refresh` で再取得する
+
+    Access Token は**メモリにのみ保持**し、localStorage / sessionStorage に保存してはならない。
+    XSS が起きたときの被害範囲を限定するため。
+
+    Refresh Cookie は `Path=/api/v1/auth` に限定されているため、通常の API リクエストには
+    自動送信されない。`/auth/*` を呼ぶときだけ `credentials: 'include'` を指定すること。
+
+    ## エラー
+
+    エラーは RFC 9457 Problem Details 形式（`application/problem+json`）で統一する。
+    `type` が機械可読な識別子であり、クライアントはこれで分岐する。`detail` の文面は変わりうる。
+
+    ## ページング
+
+    一覧はすべてカーソルページング。`cursor` は**不透明な文字列**であり、
+    クライアントはこれを解釈・生成してはならない。次ページが無い場合 `nextCursor` は `null`。
+  license:
+    name: MIT
+    identifier: MIT
+  contact:
+    name: nakashimamasaya
+    url: https://github.com/nakashimamasaya/x_app_spring
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: ローカル開発環境
+
+tags:
+  - name: auth
+    description: 登録・ログイン・トークン更新
+  - name: users
+    description: プロフィールとフォロー関係
+  - name: posts
+    description: 投稿といいね
+  - name: timeline
+    description: タイムライン取得
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ==========================================================
+  # auth
+  # ==========================================================
+  /auth/register:
+    post:
+      tags: [auth]
+      operationId: register
+      summary: ユーザー登録
+      description: |
+        アカウントを作成する。**登録してもログイン状態にはならない**ので、
+        続けて `POST /auth/login` を呼ぶこと。メール確認は行わない。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: 作成成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: username または email が既に使われている
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              examples:
+                usernameTaken:
+                  summary: username 重複
+                  value:
+                    type: 'urn:x-app-spring:problem:username-taken'
+                    title: Username already taken
+                    status: 409
+                    detail: 'この username は既に使われています。'
+                    instance: /api/v1/auth/register
+                emailTaken:
+                  summary: email 重複
+                  value:
+                    type: 'urn:x-app-spring:problem:email-taken'
+                    title: Email already taken
+                    status: 409
+                    detail: 'この email は既に使われています。'
+                    instance: /api/v1/auth/register
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: ログイン
+      description: |
+        Access Token をボディで、Refresh Token を HttpOnly Cookie で返す。
+
+        認証に失敗した場合、**username が存在しないのかパスワードが違うのかを区別しない**。
+        ユーザー列挙攻撃を防ぐため、どちらも同一の `401` を返す。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: 認証成功
+          headers:
+            Set-Cookie:
+              $ref: '#/components/headers/RefreshTokenCookie'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/InvalidCredentials'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      operationId: refresh
+      summary: Access Token の再取得
+      description: |
+        Refresh Cookie を使って新しい Access Token を得る。リクエストボディは不要。
+
+        呼ぶたびに Refresh Token は**ローテーション**され、古いものは失効する。
+        既に失効した Refresh Token が提示された場合、トークン盗難とみなして
+        **そのユーザーの全 Refresh Token を失効させ** `401` を返す。この場合は再ログインが必要。
+
+        ブラウザからは `credentials: 'include'` を付けて呼ぶこと。
+      security: []
+      responses:
+        '200':
+          description: 再発行成功
+          headers:
+            Set-Cookie:
+              $ref: '#/components/headers/RefreshTokenCookie'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Refresh Token が無い・期限切れ・失効済み
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              examples:
+                revoked:
+                  summary: 失効済みトークンの再利用を検知
+                  value:
+                    type: 'urn:x-app-spring:problem:refresh-token-revoked'
+                    title: Refresh token revoked
+                    status: 401
+                    detail: 'セッションが無効化されました。再度ログインしてください。'
+                    instance: /api/v1/auth/refresh
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: ログアウト
+      description: |
+        Refresh Token を失効させ、Cookie を削除する。
+
+        **冪等**。既にログアウト済み、または Cookie が無い状態で呼んでも `204` を返す。
+      security: []
+      responses:
+        '204':
+          description: ログアウト完了
+          headers:
+            Set-Cookie:
+              description: Refresh Cookie を即時失効させる（`Max-Age=0`）
+              schema:
+                type: string
+              example: 'refresh_token=; Path=/api/v1/auth; HttpOnly; Secure; SameSite=Strict; Max-Age=0'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # ==========================================================
+  # users
+  # ==========================================================
+  /users/me:
+    get:
+      tags: [users]
+      operationId: getCurrentUser
+      summary: 自分のプロフィールを取得
+      description: |
+        認証中のユーザー自身の情報を返す。
+
+        **`email` は含まれない。** 自分自身の情報であっても返さない方針のため。
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    patch:
+      tags: [users]
+      operationId: updateCurrentUser
+      summary: 自分のプロフィールを更新
+      description: |
+        `displayName` と `bio` のみ変更できる。省略したフィールドは変更されない。
+
+        **`username` は変更できない。** URL の一意な識別子として使っているため。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/{username}:
+    parameters:
+      - $ref: '#/components/parameters/Username'
+    get:
+      tags: [users]
+      operationId: getUserProfile
+      summary: ユーザーのプロフィールを取得
+      description: |
+        投稿数・フォロワー数・フォロー中数を含む。認証は不要。
+
+        認証済みで呼んだ場合のみ `isFollowing` に真偽値が入る。
+        未認証の場合は `null`（「不明」であって `false` ではない）。
+      security:
+        - bearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '404':
+          $ref: '#/components/responses/UserNotFound'
+
+  /users/{username}/posts:
+    parameters:
+      - $ref: '#/components/parameters/Username'
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+    get:
+      tags: [users]
+      operationId: listUserPosts
+      summary: ユーザーの投稿一覧
+      description: 新しい順。削除済み投稿は含まない。認証は不要。
+      security:
+        - bearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostPage'
+        '400':
+          $ref: '#/components/responses/InvalidCursor'
+        '404':
+          $ref: '#/components/responses/UserNotFound'
+
+  /users/{username}/follow:
+    parameters:
+      - $ref: '#/components/parameters/Username'
+    post:
+      tags: [users]
+      operationId: followUser
+      summary: フォローする
+      description: |
+        **冪等。** 既にフォロー済みでも `204` を返す（`409` にはしない）。
+        クライアントが再送や競合を気にせず呼べるようにするため。
+
+        **自分自身はフォローできない** — `400` を返す。
+      responses:
+        '204':
+          description: フォロー中の状態になった
+        '400':
+          description: 自分自身をフォローしようとした
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              examples:
+                selfFollow:
+                  summary: 自己フォロー
+                  value:
+                    type: 'urn:x-app-spring:problem:self-follow'
+                    title: Cannot follow yourself
+                    status: 400
+                    detail: '自分自身をフォローすることはできません。'
+                    instance: /api/v1/users/alice/follow
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/UserNotFound'
+
+    delete:
+      tags: [users]
+      operationId: unfollowUser
+      summary: フォローを外す
+      description: '**冪等。** フォローしていない相手に対して呼んでも `204` を返す。'
+      responses:
+        '204':
+          description: フォローしていない状態になった
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/UserNotFound'
+
+  /users/{username}/followers:
+    parameters:
+      - $ref: '#/components/parameters/Username'
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+    get:
+      tags: [users]
+      operationId: listFollowers
+      summary: フォロワー一覧
+      security:
+        - bearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPage'
+        '400':
+          $ref: '#/components/responses/InvalidCursor'
+        '404':
+          $ref: '#/components/responses/UserNotFound'
+
+  /users/{username}/following:
+    parameters:
+      - $ref: '#/components/parameters/Username'
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+    get:
+      tags: [users]
+      operationId: listFollowing
+      summary: フォロー中一覧
+      security:
+        - bearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPage'
+        '400':
+          $ref: '#/components/responses/InvalidCursor'
+        '404':
+          $ref: '#/components/responses/UserNotFound'
+
+  # ==========================================================
+  # posts
+  # ==========================================================
+  /posts:
+    post:
+      tags: [posts]
+      operationId: createPost
+      summary: 投稿する
+      description: |
+        本文は前後の空白を除去したうえで 1〜280 文字であること。
+        文字数は **Unicode コードポイント数**で数える（絵文字は 1 文字）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePostRequest'
+      responses:
+        '201':
+          description: 作成成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /posts/{postId}:
+    parameters:
+      - $ref: '#/components/parameters/PostId'
+    get:
+      tags: [posts]
+      operationId: getPost
+      summary: 投稿を取得
+      description: 削除済みの投稿は `404` を返す。認証は不要。
+      security:
+        - bearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+        '400':
+          $ref: '#/components/responses/InvalidPostId'
+        '404':
+          $ref: '#/components/responses/PostNotFound'
+
+    delete:
+      tags: [posts]
+      operationId: deletePost
+      summary: 投稿を削除
+      description: |
+        論理削除する。削除できるのは**著者本人のみ**。
+
+        他人の投稿を削除しようとした場合は `403`。
+        既に削除済み・存在しない投稿は `404`（この操作は冪等ではない）。
+      responses:
+        '204':
+          description: 削除成功
+        '400':
+          $ref: '#/components/responses/InvalidPostId'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: 他人の投稿を削除しようとした
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              examples:
+                notAuthor:
+                  summary: 著者ではない
+                  value:
+                    type: 'urn:x-app-spring:problem:not-post-author'
+                    title: Not the author
+                    status: 403
+                    detail: '自分の投稿のみ削除できます。'
+                    instance: /api/v1/posts/01912d4e-1a2b-7c3d-8e4f-5a6b7c8d9e0f
+        '404':
+          $ref: '#/components/responses/PostNotFound'
+
+  /posts/{postId}/like:
+    parameters:
+      - $ref: '#/components/parameters/PostId'
+    post:
+      tags: [posts]
+      operationId: likePost
+      summary: いいねする
+      description: |
+        **冪等。** 既にいいね済みでも `204`。自分の投稿にもいいねできる。
+      responses:
+        '204':
+          description: いいね済みの状態になった
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '400':
+          $ref: '#/components/responses/InvalidPostId'
+        '404':
+          $ref: '#/components/responses/PostNotFound'
+
+    delete:
+      tags: [posts]
+      operationId: unlikePost
+      summary: いいねを外す
+      description: '**冪等。** いいねしていない投稿に対して呼んでも `204`。'
+      responses:
+        '204':
+          description: いいねしていない状態になった
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '400':
+          $ref: '#/components/responses/InvalidPostId'
+        '404':
+          $ref: '#/components/responses/PostNotFound'
+
+  # ==========================================================
+  # timeline
+  # ==========================================================
+  /timeline/home:
+    parameters:
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+    get:
+      tags: [timeline]
+      operationId: getHomeTimeline
+      summary: ホームタイムライン
+      description: |
+        自分自身とフォロー中ユーザーの投稿を新しい順で返す。認証が必要。
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostPage'
+        '400':
+          $ref: '#/components/responses/InvalidCursor'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /timeline/public:
+    parameters:
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+    get:
+      tags: [timeline]
+      operationId: getPublicTimeline
+      summary: 公開タイムライン
+      description: |
+        全ユーザーの投稿を新しい順で返す。**認証は不要**。
+
+        認証して呼んだ場合のみ、各投稿の `likedByMe` に真偽値が入る。
+      security:
+        - bearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostPage'
+        '400':
+          $ref: '#/components/responses/InvalidCursor'
+
+# ============================================================
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 'ログインで得た Access Token を `Authorization: Bearer <token>` で送る。'
+
+  headers:
+    RefreshTokenCookie:
+      description: |
+        Refresh Token。`Path` を `/api/v1/auth` に限定しているため、通常の API
+        リクエストには送信されない。`HttpOnly` により JavaScript からは読めない。
+      schema:
+        type: string
+      example: 'refresh_token=eyJhbGciOi...; Path=/api/v1/auth; HttpOnly; Secure; SameSite=Strict; Max-Age=1209600'
+
+  parameters:
+    Username:
+      name: username
+      in: path
+      required: true
+      description: 対象ユーザーの username（大文字小文字を区別しない）
+      schema:
+        $ref: '#/components/schemas/Username'
+      example: alice
+
+    PostId:
+      name: postId
+      in: path
+      required: true
+      description: 投稿の ID
+      schema:
+        type: string
+        format: uuid
+      example: 01912d4e-1a2b-7c3d-8e4f-5a6b7c8d9e0f
+
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: |
+        前回のレスポンスの `nextCursor` をそのまま渡す。
+        **不透明な文字列であり、クライアントは解釈も生成もしてはならない。**
+        省略すると先頭から取得する。
+      schema:
+        type: string
+      example: MDE5MTJkNGUtMWEyYi03YzNkLThlNGYtNWE2YjdjOGQ5ZTBm
+
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: 取得件数
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      example: 20
+
+  responses:
+    ValidationError:
+      description: 入力値が不正
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ValidationProblem'
+          examples:
+            postTooLong:
+              summary: 投稿が長すぎる
+              value:
+                type: 'urn:x-app-spring:problem:validation-failed'
+                title: Validation failed
+                status: 400
+                detail: '入力値に誤りがあります。'
+                instance: /api/v1/posts
+                errors:
+                  - field: body
+                    message: '本文は 1〜280 文字で入力してください。'
+
+    Unauthorized:
+      description: 認証が必要、または Access Token が無効・期限切れ
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          examples:
+            expired:
+              summary: Access Token の期限切れ
+              value:
+                type: 'urn:x-app-spring:problem:unauthorized'
+                title: Unauthorized
+                status: 401
+                detail: '認証が必要です。'
+                instance: /api/v1/timeline/home
+
+    InvalidCredentials:
+      description: |
+        username またはパスワードが正しくない。
+        **どちらが誤りかは区別しない**（ユーザー列挙攻撃を防ぐため）。
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          examples:
+            invalid:
+              summary: 認証失敗
+              value:
+                type: 'urn:x-app-spring:problem:invalid-credentials'
+                title: Invalid credentials
+                status: 401
+                detail: 'username またはパスワードが正しくありません。'
+                instance: /api/v1/auth/login
+
+    UserNotFound:
+      description: 指定した username のユーザーが存在しない
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          examples:
+            notFound:
+              summary: ユーザーなし
+              value:
+                type: 'urn:x-app-spring:problem:user-not-found'
+                title: User not found
+                status: 404
+                detail: 'ユーザーが見つかりません。'
+                instance: /api/v1/users/nobody
+
+    PostNotFound:
+      description: 投稿が存在しない、または削除済み
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          examples:
+            notFound:
+              summary: 投稿なし
+              value:
+                type: 'urn:x-app-spring:problem:post-not-found'
+                title: Post not found
+                status: 404
+                detail: '投稿が見つかりません。'
+                instance: /api/v1/posts/01912d4e-1a2b-7c3d-8e4f-5a6b7c8d9e0f
+
+    InvalidCursor:
+      description: cursor が不正、または limit が範囲外
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          examples:
+            badCursor:
+              summary: 解釈できないカーソル
+              value:
+                type: 'urn:x-app-spring:problem:invalid-cursor'
+                title: Invalid cursor
+                status: 400
+                detail: 'カーソルの形式が正しくありません。'
+                instance: /api/v1/timeline/public
+
+    InvalidPostId:
+      description: |
+        `postId` が UUID として解釈できない。
+
+        存在しない UUID は `404` だが、UUID の形式ですらない値（`/posts/abc` など）は
+        パス変数の型変換が失敗するため `400` になる。
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          examples:
+            malformed:
+              summary: UUID ではない
+              value:
+                type: 'urn:x-app-spring:problem:invalid-path-parameter'
+                title: Invalid path parameter
+                status: 400
+                detail: 'postId は UUID 形式で指定してください。'
+                instance: /api/v1/posts/abc
+
+    RateLimited:
+      description: リクエストが多すぎる
+      headers:
+        Retry-After:
+          description: 次に試行できるまでの秒数
+          schema:
+            type: integer
+          example: 60
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          examples:
+            tooMany:
+              summary: レート制限
+              value:
+                type: 'urn:x-app-spring:problem:rate-limited'
+                title: Too many requests
+                status: 429
+                detail: 'リクエストが多すぎます。しばらく待ってから再試行してください。'
+                instance: /api/v1/auth/login
+
+  schemas:
+    # ---- 基本型 -------------------------------------------
+    Username:
+      type: string
+      minLength: 3
+      maxLength: 20
+      pattern: '^[a-zA-Z0-9_]+$'
+      description: 英数字とアンダースコアのみ。大文字小文字を区別せず一意。
+      examples: [alice, bob_2]
+
+    # ---- エラー -------------------------------------------
+    Problem:
+      type: object
+      description: RFC 9457 Problem Details。
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri
+          description: |
+            エラー種別の識別子。**クライアントはこの値で分岐する。**
+            `title` と `detail` の文面は予告なく変わりうる。
+          examples: ['urn:x-app-spring:problem:user-not-found']
+        title:
+          type: string
+          description: エラー種別の短い説明（人間向け・英語）
+          examples: [User not found]
+        status:
+          type: integer
+          description: HTTP ステータスコード
+          examples: [404]
+        detail:
+          type: string
+          description: この発生事象の説明（人間向け・日本語）
+          examples: ['ユーザーが見つかりません。']
+        instance:
+          type: string
+          description: エラーが発生したリクエストのパス
+          examples: ['/api/v1/users/nobody']
+      examples:
+        - type: 'urn:x-app-spring:problem:user-not-found'
+          title: User not found
+          status: 404
+          detail: 'ユーザーが見つかりません。'
+          instance: /api/v1/users/nobody
+
+    ValidationProblem:
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          description: バリデーションエラー。違反したフィールドを列挙する。
+          required: [errors]
+          properties:
+            errors:
+              type: array
+              minItems: 1
+              items:
+                $ref: '#/components/schemas/FieldError'
+
+    FieldError:
+      type: object
+      required: [field, message]
+      properties:
+        field:
+          type: string
+          description: 違反したフィールド名（リクエストボディのプロパティ名）
+          examples: [body]
+        message:
+          type: string
+          description: ユーザーに表示できる日本語のメッセージ
+          examples: ['本文は 1〜280 文字で入力してください。']
+      examples:
+        - field: body
+          message: '本文は 1〜280 文字で入力してください。'
+
+    # ---- 認証 ---------------------------------------------
+    RegisterRequest:
+      type: object
+      required: [username, email, password, displayName]
+      properties:
+        username:
+          $ref: '#/components/schemas/Username'
+        email:
+          type: string
+          format: email
+          maxLength: 254
+          description: ログインには使わない。将来のパスワードリセット用に保持する。
+          examples: ['alice@example.com']
+        password:
+          type: string
+          minLength: 8
+          maxLength: 72
+          description: 上限 72 は BCrypt の仕様上の制限。文字種の縛りは設けない。
+          examples: ['correct-horse-battery']
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 50
+          examples: ['アリス']
+      examples:
+        - username: alice
+          email: 'alice@example.com'
+          password: 'correct-horse-battery'
+          displayName: 'アリス'
+
+    LoginRequest:
+      type: object
+      description: |
+        ログインには **username を使う**。email ではログインできない（MVP のスコープ外）。
+      required: [username, password]
+      properties:
+        username:
+          $ref: '#/components/schemas/Username'
+        password:
+          type: string
+          minLength: 8
+          maxLength: 72
+          examples: ['correct-horse-battery']
+      examples:
+        - username: alice
+          password: 'correct-horse-battery'
+
+    TokenResponse:
+      type: object
+      description: |
+        Refresh Token はここに含まれない。HttpOnly Cookie で別途配られる。
+      required: [accessToken, tokenType, expiresIn]
+      properties:
+        accessToken:
+          type: string
+          description: '**メモリにのみ保持すること。** localStorage に保存してはならない。'
+          examples: ['<header>.<payload>.<signature>']
+        tokenType:
+          type: string
+          const: Bearer
+          examples: [Bearer]
+        expiresIn:
+          type: integer
+          description: Access Token の有効秒数
+          examples: [900]
+      examples:
+        - accessToken: '<header>.<payload>.<signature>'
+          tokenType: Bearer
+          expiresIn: 900
+
+    # ---- ユーザー -----------------------------------------
+    User:
+      type: object
+      description: |
+        ユーザーの公開情報。**`email` は含まれない**（自分自身の情報であっても返さない）。
+      required: [id, username, displayName, bio, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+          examples: ['01912d4e-1a2b-7c3d-8e4f-5a6b7c8d9e0f']
+        username:
+          $ref: '#/components/schemas/Username'
+        displayName:
+          type: string
+          examples: ['アリス']
+        bio:
+          type: string
+          maxLength: 160
+          description: 未設定の場合は空文字。`null` にはならない。
+          examples: ['コーヒーと Java が好きです。']
+        createdAt:
+          type: string
+          format: date-time
+          examples: ['2026-07-28T09:00:00Z']
+      examples:
+        - id: '01912d4e-1a2b-7c3d-8e4f-5a6b7c8d9e0f'
+          username: alice
+          displayName: 'アリス'
+          bio: 'コーヒーと Java が好きです。'
+          createdAt: '2026-07-28T09:00:00Z'
+
+    UserProfile:
+      allOf:
+        - $ref: '#/components/schemas/User'
+        - type: object
+          required: [postCount, followerCount, followingCount, isFollowing]
+          properties:
+            postCount:
+              type: integer
+              minimum: 0
+              description: 削除済みを除いた投稿数
+              examples: [42]
+            followerCount:
+              type: integer
+              minimum: 0
+              examples: [128]
+            followingCount:
+              type: integer
+              minimum: 0
+              examples: [76]
+            isFollowing:
+              type: [boolean, 'null']
+              description: |
+                閲覧者がこのユーザーをフォローしているか。
+                **未認証の場合は `null`**（`false` ではなく「不明」を表す）。
+              examples: [true]
+
+    UpdateProfileRequest:
+      type: object
+      description: |
+        省略したフィールドは変更されない。最低 1 つは指定すること。
+        `username` と `email` は変更できない。
+      minProperties: 1
+      properties:
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 50
+          examples: ['アリス（改）']
+        bio:
+          type: string
+          maxLength: 160
+          examples: ['Spring Boot を勉強中。']
+      examples:
+        - displayName: 'アリス（改）'
+          bio: 'Spring Boot を勉強中。'
+
+    AuthorSummary:
+      type: object
+      description: 投稿に埋め込む著者の最小情報。
+      required: [id, username, displayName]
+      properties:
+        id:
+          type: string
+          format: uuid
+          examples: ['01912d4e-1a2b-7c3d-8e4f-5a6b7c8d9e0f']
+        username:
+          $ref: '#/components/schemas/Username'
+        displayName:
+          type: string
+          examples: ['アリス']
+      examples:
+        - id: '01912d4e-1a2b-7c3d-8e4f-5a6b7c8d9e0f'
+          username: alice
+          displayName: 'アリス'
+
+    # ---- 投稿 ---------------------------------------------
+    CreatePostRequest:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 280
+          description: |
+            前後の空白を除去したうえで 1〜280 文字。
+            文字数は Unicode コードポイント数で数える（絵文字は 1 文字）。
+          examples: ['はじめての投稿です。']
+      examples:
+        - body: 'はじめての投稿です。'
+
+    Post:
+      type: object
+      required: [id, author, body, createdAt, likeCount, likedByMe]
+      properties:
+        id:
+          type: string
+          format: uuid
+          examples: ['01912d4e-1a2b-7c3d-8e4f-5a6b7c8d9e0f']
+        author:
+          $ref: '#/components/schemas/AuthorSummary'
+        body:
+          type: string
+          examples: ['はじめての投稿です。']
+        createdAt:
+          type: string
+          format: date-time
+          examples: ['2026-07-28T09:30:00Z']
+        likeCount:
+          type: integer
+          minimum: 0
+          examples: [3]
+        likedByMe:
+          type: [boolean, 'null']
+          description: |
+            閲覧者がこの投稿にいいねしているか。
+            **未認証の場合は `null`**（`false` ではなく「不明」を表す）。
+          examples: [false]
+      examples:
+        - id: '01912d4e-1a2b-7c3d-8e4f-5a6b7c8d9e0f'
+          author:
+            id: '01912d4e-1a2b-7c3d-8e4f-5a6b7c8d9e0f'
+            username: alice
+            displayName: 'アリス'
+          body: 'はじめての投稿です。'
+          createdAt: '2026-07-28T09:30:00Z'
+          likeCount: 3
+          likedByMe: false
+
+    # ---- ページング ---------------------------------------
+    PostPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Post'
+        nextCursor:
+          type: [string, 'null']
+          description: |
+            次ページを取得するためのカーソル。**次が無い場合は `null`。**
+            不透明な文字列であり、クライアントは解釈してはならない。
+          examples: ['MDE5MTJkNGUtMWEyYi03YzNkLThlNGYtNWE2YjdjOGQ5ZTBm']
+      examples:
+        - items:
+            - id: '01912d4e-1a2b-7c3d-8e4f-5a6b7c8d9e0f'
+              author:
+                id: '01912d4e-1a2b-7c3d-8e4f-5a6b7c8d9e0f'
+                username: alice
+                displayName: 'アリス'
+              body: 'はじめての投稿です。'
+              createdAt: '2026-07-28T09:30:00Z'
+              likeCount: 3
+              likedByMe: false
+          nextCursor: null
+
+    UserPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        nextCursor:
+          type: [string, 'null']
+          description: 次が無い場合は `null`。
+          examples: [null]
+      examples:
+        - items:
+            - id: '01912d4e-1a2b-7c3d-8e4f-5a6b7c8d9e0f'
+              username: alice
+              displayName: 'アリス'
+              bio: 'コーヒーと Java が好きです。'
+              createdAt: '2026-07-28T09:00:00Z'
+          nextCursor: null
