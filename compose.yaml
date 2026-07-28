@@ -1,8 +1,9 @@
 # 開発用。起動前に `cp .env.example .env` して JWT_SECRET を設定すること。
 #   openssl rand -base64 48
 #
-# フロントエンドは frontend/ 作成後に web サービスを追加する（ホストの Node は
-# v16.5.0 で Vite 8 の要件を満たさないため、コンテナ内でのみ動かす）。
+# ホストの Node は v16.5.0 で Vite 8 の要件（20.19+）を満たさないため、
+# フロントエンドはコンテナ内でのみ動かす。npm 系のコマンドも
+# `docker compose run --rm web npm ...` 経由で実行すること。
 
 services:
   db:
@@ -41,9 +42,36 @@ services:
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET が未設定です。openssl rand -base64 48 で生成してください}
       JWT_ACCESS_TOKEN_TTL: ${JWT_ACCESS_TOKEN_TTL:-PT15M}
       JWT_REFRESH_TOKEN_TTL: ${JWT_REFRESH_TOKEN_TTL:-P14D}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      # WEB_PORT から導出する。独立した既定値にすると、ポートを変えたときに
+      # CORS だけが黙って壊れる（ブラウザからは原因が分かりにくい）
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:${WEB_PORT:-5173}}
     ports:
       - "${API_PORT:-8080}:8080"
 
+  web:
+    image: node:24-alpine
+    working_dir: /app
+    # 起動のたびに npm ci すると遅いので、未インストールのときだけ入れる。
+    # node_modules ディレクトリの有無では判定できない（named volume は
+    # 空ディレクトリとして作られるため、常に「存在する」と見えてしまう）。
+    # 実行ファイルの有無で判定する。
+    command: sh -c "[ -x node_modules/.bin/vite ] || npm ci; npm run dev"
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      # ブラウザから見た API のアドレス。コンテナ名ではなくホスト側のポートを指す
+      VITE_API_BASE_URL: http://localhost:${API_PORT:-8080}/api/v1
+      npm_config_cache: /tmp/npm
+    volumes:
+      - ./frontend:/app
+      - ./api:/api:ro
+      # node_modules はホストと共有しない。
+      # macOS の bind mount 越しだと極端に遅く、ネイティブ依存の差異も踏むため
+      - web-node-modules:/app/node_modules
+    ports:
+      - "${WEB_PORT:-5173}:5173"
+
 volumes:
   db-data:
+  web-node-modules:
