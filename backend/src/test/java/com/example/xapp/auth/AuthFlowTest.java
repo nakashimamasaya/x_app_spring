@@ -1,7 +1,6 @@
 package com.example.xapp.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -176,16 +175,10 @@ class AuthFlowTest extends AbstractIntegrationTest {
                 .andExpect(status().isUnauthorized());
     }
 
-    /**
-     * 公開タイムラインは認証不要（api/openapi.yaml の security: [] に対応）。
-     *
-     * <p>TimelineService は次のスライスで実装するため、認証を通過すると
-     * UnsupportedOperationException になる。401 で弾かれないことがここでの検証対象。
-     */
+    /** 公開タイムラインは認証不要（api/openapi.yaml の security: [] に対応）。 */
     @Test
-    void 公開タイムラインは認証なしで到達できる() {
-        assertThatThrownBy(() -> mockMvc.perform(get("/timeline/public")))
-                .hasRootCauseInstanceOf(UnsupportedOperationException.class);
+    void 公開タイムラインは認証なしで読める() throws Exception {
+        mockMvc.perform(get("/timeline/public")).andExpect(status().isOk());
     }
 
     // ---- ヘルパ ----------------------------------------------------
