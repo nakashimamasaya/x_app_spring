@@ -3,9 +3,13 @@ package com.example.xapp.auth;
 import com.example.xapp.auth.dto.LoginRequest;
 import com.example.xapp.auth.dto.RegisterRequest;
 import com.example.xapp.auth.dto.TokenResponse;
+import com.example.xapp.common.AppProperties;
 import com.example.xapp.user.dto.UserResponse;
 import jakarta.validation.Valid;
+import java.time.Duration;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -17,20 +21,29 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * api/openapi.yaml の auth タグに対応する。
  *
- * <p>Refresh Token は Cookie で扱う。名前とパス（{@code /api/v1/auth} 配下に限定）は
- * 契約で決まっているので勝手に変えない。
+ * <p>Refresh Token は HttpOnly Cookie で扱う。名前とパスは契約で決まっているので変えない。
  */
 @RestController
 @RequestMapping("/auth")
 public class AuthController {
 
-    /** Refresh Token の Cookie 名。契約（openapi.yaml の Set-Cookie 例）と一致させること。 */
+    /** 契約（openapi.yaml の Set-Cookie 例）と一致させること。 */
     public static final String REFRESH_COOKIE = "refresh_token";
 
-    private final AuthService authService;
+    /**
+     * Cookie のパスを /auth 配下に限定する。
+     *
+     * <p>これにより通常の API リクエストに Refresh Cookie が載らない。BFF を挟まない構成で
+     * Cookie の露出を最小化するための要。context-path (/api/v1) を含めた絶対パスで指定する。
+     */
+    private static final String COOKIE_PATH = "/api/v1/auth";
 
-    public AuthController(AuthService authService) {
+    private final AuthService authService;
+    private final AppProperties props;
+
+    public AuthController(AuthService authService, AppProperties props) {
         this.authService = authService;
+        this.props = props;
     }
 
     @PostMapping("/register")
@@ -41,18 +54,43 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<TokenResponse> login(@Valid @RequestBody LoginRequest request) {
-        throw new UnsupportedOperationException("フェーズ3で実装する");
+        return withRefreshCookie(authService.login(request));
     }
 
     @PostMapping("/refresh")
     public ResponseEntity<TokenResponse> refresh(
             @CookieValue(name = REFRESH_COOKIE, required = false) String refreshToken) {
-        throw new UnsupportedOperationException("フェーズ3で実装する");
+        return withRefreshCookie(authService.refresh(refreshToken));
     }
 
+    /** 冪等。Cookie が無くても 204 を返す。 */
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(
             @CookieValue(name = REFRESH_COOKIE, required = false) String refreshToken) {
-        throw new UnsupportedOperationException("フェーズ3で実装する");
+        authService.logout(refreshToken);
+        return ResponseEntity.noContent()
+                .header(HttpHeaders.SET_COOKIE, refreshCookie("", Duration.ZERO).toString())
+                .build();
+    }
+
+    private ResponseEntity<TokenResponse> withRefreshCookie(AuthService.AuthResult result) {
+        return ResponseEntity.ok()
+                .header(
+                        HttpHeaders.SET_COOKIE,
+                        refreshCookie(result.refreshTokenValue(), props.jwt().refreshTokenTtl())
+                                .toString())
+                .body(result.tokens());
+    }
+
+    private static ResponseCookie refreshCookie(String value, Duration maxAge) {
+        return ResponseCookie.from(REFRESH_COOKIE, value)
+                // JavaScript から読めなくする。XSS でトークンを盗まれないため
+                .httpOnly(true)
+                .secure(true)
+                // クロスサイトからの送信を禁止する。CSRF 対策
+                .sameSite("Strict")
+                .path(COOKIE_PATH)
+                .maxAge(maxAge)
+                .build();
     }
 }
