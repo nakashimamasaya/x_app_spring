@@ -29,28 +29,16 @@ class AuthFlowTest extends AbstractIntegrationTest {
 
     @Autowired private MockMvc mockMvc;
 
-    /**
-     * 発行したトークンが認証を通ることを確認する。
-     *
-     * <p>{@code /users/me} のレスポンス本体は検証しない。UserService は次のスライスで
-     * 実装するため、ここで到達すると UnsupportedOperationException になる。
-     * 「401 で弾かれずハンドラまで到達した」ことが、ここで見たい振る舞い。
-     */
     @Test
-    void 発行したトークンで認証を通過できる() throws Exception {
+    void 登録してログインしトークンで自分の情報を取得できる() throws Exception {
         register("flowuser", "flow@example.com", "password123", "フロー");
 
         MvcResult login = login("flowuser", "password123").andExpect(status().isOk()).andReturn();
         String accessToken = accessTokenOf(login);
 
-        assertThatThrownBy(
-                        () ->
-                                mockMvc.perform(
-                                        get("/users/me")
-                                                .header(
-                                                        HttpHeaders.AUTHORIZATION,
-                                                        "Bearer " + accessToken)))
-                .hasRootCauseInstanceOf(UnsupportedOperationException.class);
+        mockMvc.perform(get("/users/me").header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value("flowuser"));
     }
 
     @Test
