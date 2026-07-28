@@ -53,6 +53,10 @@ app:
   cors:
     # ワイルドカードは使わない。BFF を挟まない構成では必須の設定
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  cookie:
+    # 既定は安全側の true。HTTP で動かすローカル開発でのみ false にする
+    # （ブラウザは Secure 付き Cookie を HTTP のオリジンでは保存しない）
+    secure: ${COOKIE_SECURE:true}
   pagination:
     default-limit: 20
     max-limit: 100

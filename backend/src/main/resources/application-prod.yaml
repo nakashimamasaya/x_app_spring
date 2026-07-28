@@ -1,0 +1,32 @@
+# 本番相当プロファイル。compose.prod.yaml から SPRING_PROFILES_ACTIVE=prod で有効化する。
+
+spring:
+  jpa:
+    # 本番で自動生成される SQL を都度出さない
+    show-sql: false
+
+# 内部構造の手がかりを与えないため、エラーの詳細を出さない
+server:
+  error:
+    include-stacktrace: never
+    include-message: never
+    include-binding-errors: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # health のみ。env や beans を晒さない
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      show-components: never
+
+logging:
+  level:
+    root: WARN
+    com.example.xapp: INFO
+    # SQL とバインド値をログに出さない（個人情報が流れる）
+    org.hibernate.SQL: WARN
+    org.hibernate.orm.jdbc.bind: WARN

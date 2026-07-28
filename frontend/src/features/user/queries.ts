@@ -6,9 +6,10 @@ export const userKeys = {
   profile: (username: string) => ['profile', username] as const,
 }
 
-export function useProfile(username: string) {
+export function useProfile(username: string, enabled: boolean) {
   return useQuery({
     queryKey: userKeys.profile(username),
+    enabled,
     queryFn: async () => {
       const { data, error } = await api.GET('/users/{username}', {
         params: { path: { username } },

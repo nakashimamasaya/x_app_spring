@@ -5,8 +5,9 @@ import { usePublicTimeline, useDeletePost } from '../features/timeline/queries'
 
 /** 公開タイムライン。未認証でも読める（api/openapi.yaml の security: []）。 */
 export function PublicTimelinePage() {
-  const { state } = useAuthContext()
-  const query = usePublicTimeline()
+  const { state, ready } = useAuthContext()
+  // 認証状態が確定してから取得する（未確定だと likedByMe が null で返る）
+  const query = usePublicTimeline(ready)
   const deletePost = useDeletePost()
   const currentUserId = state.status === 'authenticated' ? state.user.id : undefined
 

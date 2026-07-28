@@ -20,6 +20,8 @@ app:
     refresh-token-ttl: P14D
   cors:
     allowed-origins: http://localhost:5173
+  cookie:
+    secure: true
   pagination:
     default-limit: 20
     max-limit: 100

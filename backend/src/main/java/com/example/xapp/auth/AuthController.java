@@ -82,11 +82,13 @@ public class AuthController {
                 .body(result.tokens());
     }
 
-    private static ResponseCookie refreshCookie(String value, Duration maxAge) {
+    private ResponseCookie refreshCookie(String value, Duration maxAge) {
         return ResponseCookie.from(REFRESH_COOKIE, value)
                 // JavaScript から読めなくする。XSS でトークンを盗まれないため
                 .httpOnly(true)
-                .secure(true)
+                // 本番では必ず true。ブラウザは Secure 付き Cookie を HTTP の
+                // オリジンでは保存しないため、HTTP のローカル開発でのみ false にする
+                .secure(props.cookie().secure())
                 // クロスサイトからの送信を禁止する。CSRF 対策
                 .sameSite("Strict")
                 .path(COOKIE_PATH)
