@@ -1,6 +1,7 @@
 package com.example.xapp.common;
 
 import com.example.xapp.common.exception.AppException;
+import com.example.xapp.common.exception.FieldValidationException;
 import java.net.URI;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -28,7 +29,12 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(AppException.class)
     public ProblemDetail handleAppException(AppException e) {
-        return problem(e.getStatus(), e.getType(), e.getTitle(), e.getMessage());
+        ProblemDetail problem = problem(e.getStatus(), e.getType(), e.getTitle(), e.getMessage());
+        // サービス層の検証エラーも @Valid 由来の 400 とレスポンスの形を揃える
+        if (e instanceof FieldValidationException fve) {
+            problem.setProperty("errors", List.of(new FieldError(fve.getField(), e.getMessage())));
+        }
+        return problem;
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
