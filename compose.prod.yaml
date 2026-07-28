@@ -1,0 +1,61 @@
+# 本番相当の構成。ローカルで「本番と同じ形」で起動確認するためのもの。
+#   docker compose -f compose.prod.yaml up -d --build
+#
+# 開発用 compose.yaml との違い:
+#   - フロントは Vite の開発サーバーではなく nginx で静的配信する
+#   - Swagger UI と DevTools を無効にする（prod プロファイル）
+#   - Cookie の Secure を有効にする（既定値のまま）
+#   - DB のポートをホストに公開しない
+#
+# HTTPS の終端はこの構成には含まない。実際に公開する際は
+# リバースプロキシなり LB なりを前段に置くこと。Secure Cookie は
+# HTTPS でないとブラウザに保存されない。
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-xapp}
+      POSTGRES_USER: ${POSTGRES_USER:-xapp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+    volumes:
+      - db-data-prod:/var/lib/postgresql
+    # 開発時と違い、ホストにポートを公開しない
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-xapp} -d ${POSTGRES_DB:-xapp}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-xapp}
+      POSTGRES_USER: ${POSTGRES_USER:-xapp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      JWT_SECRET: ${JWT_SECRET:?}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:${WEB_PORT:-8081}}
+      # COOKIE_SECURE は既定の true のまま。HTTPS 前提
+    ports:
+      - "${API_PORT:-8080}:8080"
+
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:${API_PORT:-8080}/api/v1}
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-8081}:80"
+
+volumes:
+  db-data-prod:

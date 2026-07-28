@@ -140,9 +140,12 @@ jobs:
         run: |
           cp .env.example .env
           sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -base64 48)|" .env
-          docker compose up -d --build --wait
+          docker compose -f compose.yaml -f compose.e2e.yaml up -d --build --wait
+      # compose.e2e.yaml がブラウザから見たオリジンと CORS を揃える。
+      # これを外すと SameSite=Strict の Refresh Cookie が API に送られず落ちる
       - name: Run Playwright
-        run: docker compose --profile e2e run --rm e2e npx playwright test
+        run: |
+          docker compose -f compose.yaml -f compose.e2e.yaml --profile e2e run --rm e2e
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: failure()
         with:

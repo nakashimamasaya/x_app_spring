@@ -1,0 +1,31 @@
+# E2E 実行時のオーバーライド。
+#   docker compose -f compose.yaml -f compose.e2e.yaml --profile e2e run --rm e2e
+#
+# Playwright のブラウザは e2e コンテナの中で動くため、そこから見た localhost は
+# e2e コンテナ自身を指す。ホスト公開ポートに host-gateway 経由で到達させる。
+#
+# サービス名（http://web:5173 と http://api:8080）を使わない理由:
+# ホスト名が違うとブラウザがクロスサイトと判定し、SameSite=Strict の
+# Refresh Cookie が API に送られなくなる。実際の運用（同一ホスト・別ポート）と
+# 条件を揃えるため、両方を同じホスト名で解決させる。
+services:
+  api:
+    environment:
+      CORS_ALLOWED_ORIGINS: http://host.docker.internal:${WEB_PORT:-5173}
+      # E2E は HTTP で動くため、Secure 付き Cookie はブラウザに保存されない。
+      # 本番では必ず true（既定値）のままにすること。
+      COOKIE_SECURE: "false"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  web:
+    environment:
+      VITE_API_BASE_URL: http://host.docker.internal:${API_PORT:-8080}/api/v1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  e2e:
+    environment:
+      E2E_BASE_URL: http://host.docker.internal:${WEB_PORT:-5173}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

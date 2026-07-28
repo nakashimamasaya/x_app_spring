@@ -10,12 +10,14 @@ import { useDeletePost } from '../features/timeline/queries'
 export function PostDetailPage() {
   const { postId = '' } = useParams()
   const navigate = useNavigate()
-  const { state } = useAuthContext()
+  const { state, ready } = useAuthContext()
   const like = useLike()
   const deletePost = useDeletePost()
 
   const query = useQuery({
     queryKey: ['post', postId],
+    // 認証状態が確定してから取得する（未確定だと likedByMe が null で返る）
+    enabled: ready,
     queryFn: async () => {
       const { data, error } = await api.GET('/posts/{postId}', {
         params: { path: { postId } },

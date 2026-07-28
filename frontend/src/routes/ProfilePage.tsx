@@ -7,9 +7,10 @@ import { useFollow, useProfile } from '../features/user/queries'
 
 export function ProfilePage() {
   const { username = '' } = useParams()
-  const { state } = useAuthContext()
-  const profile = useProfile(username)
-  const posts = useUserPosts(username)
+  const { state, ready } = useAuthContext()
+  // 認証状態が確定してから取得する（未確定だと isFollowing が null で返る）
+  const profile = useProfile(username, ready)
+  const posts = useUserPosts(username, ready)
   const follow = useFollow(username)
   const deletePost = useDeletePost()
 

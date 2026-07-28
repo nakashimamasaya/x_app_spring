@@ -21,9 +21,10 @@ function pageParams() {
   }
 }
 
-export function usePublicTimeline() {
+export function usePublicTimeline(enabled: boolean) {
   return useInfiniteQuery({
     queryKey: timelineKeys.public(),
+    enabled,
     queryFn: async ({ pageParam }) => {
       const { data, error } = await api.GET('/timeline/public', {
         params: { query: { cursor: pageParam, limit: 20 } },
@@ -50,9 +51,10 @@ export function useHomeTimeline(enabled: boolean) {
   })
 }
 
-export function useUserPosts(username: string) {
+export function useUserPosts(username: string, enabled: boolean) {
   return useInfiniteQuery({
     queryKey: timelineKeys.userPosts(username),
+    enabled,
     queryFn: async ({ pageParam }) => {
       const { data, error } = await api.GET('/users/{username}/posts', {
         params: { path: { username }, query: { cursor: pageParam, limit: 20 } },
