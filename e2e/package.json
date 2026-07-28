@@ -1,0 +1,12 @@
+{
+  "name": "x-app-spring-e2e",
+  "private": true,
+  "version": "0.0.0",
+  "description": "E2E テスト。フロントエンドとは独立した npm プロジェクトにしている（Playwright は重く、アプリのバンドルとは無関係なため）",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.57.0"
+  }
+}

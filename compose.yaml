@@ -71,7 +71,39 @@ services:
       - web-node-modules:/app/node_modules
     ports:
       - "${WEB_PORT:-5173}:5173"
+    healthcheck:
+      # e2e の depends_on: service_healthy が成立するために必要。
+      # 無いと npm ci の途中で Playwright が走り始めてしまう
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5173/ >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 60s
+
+  # 所要時間が長いので既定では起動しない。
+  #   docker compose --profile e2e run --rm e2e npx playwright test
+  e2e:
+    profiles: [e2e]
+    image: mcr.microsoft.com/playwright:v1.62.0-noble
+    working_dir: /e2e
+    depends_on:
+      web:
+        condition: service_healthy
+    environment:
+      # コンテナ間通信なのでサービス名で解決する。
+      # ブラウザは web コンテナに直接アクセスし、そこから api を叩く
+      E2E_BASE_URL: http://web:5173
+      CI: "true"
+      npm_config_cache: /tmp/npm
+    volumes:
+      - ./e2e:/e2e
+      # レポートはホストから見えるようにするが、リポジトリには入れない（.gitignore 済み）
+      - ./playwright-report:/output/playwright-report
+      - ./test-results:/output/test-results
+      - e2e-node-modules:/e2e/node_modules
+    command: sh -c "[ -x node_modules/.bin/playwright ] || npm ci; npx playwright test"
 
 volumes:
   db-data:
   web-node-modules:
+  e2e-node-modules:
