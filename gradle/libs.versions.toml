@@ -37,6 +37,9 @@ bucket4j-core = { module = "com.bucket4j:bucket4j_jdk17-core", version.ref = "bu
 
 # --- テスト ---
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
+# Boot 4 のモジュール分割により、MockMvc のテスト支援（@AutoConfigureMockMvc など）は
+# spring-boot-test-autoconfigure から分離された。starter-test だけでは入らない。
+spring-boot-starter-webmvc-test = { module = "org.springframework.boot:spring-boot-starter-webmvc-test" }
 spring-security-test = { module = "org.springframework.security:spring-security-test" }
 spring-boot-testcontainers = { module = "org.springframework.boot:spring-boot-testcontainers" }
 # Testcontainers 2.0 で artifact 名が変わった（postgresql -> testcontainers-postgresql）。
