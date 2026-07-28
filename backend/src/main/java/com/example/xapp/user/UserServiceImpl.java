@@ -1,6 +1,8 @@
 package com.example.xapp.user;
 
+import com.example.xapp.common.AppProperties;
 import com.example.xapp.common.CurrentUser;
+import com.example.xapp.common.PageLimit;
 import com.example.xapp.common.dto.CursorPage;
 import com.example.xapp.common.exception.EmptyUpdateException;
 import com.example.xapp.common.exception.SelfFollowException;
@@ -21,16 +23,19 @@ public class UserServiceImpl implements UserService {
     private final FollowRepository follows;
     private final PostQueryRepository postQuery;
     private final UserQueryRepository userQuery;
+    private final AppProperties props;
 
     public UserServiceImpl(
             UserRepository users,
             FollowRepository follows,
             PostQueryRepository postQuery,
-            UserQueryRepository userQuery) {
+            UserQueryRepository userQuery,
+            AppProperties props) {
         this.users = users;
         this.follows = follows;
         this.postQuery = postQuery;
         this.userQuery = userQuery;
+        this.props = props;
     }
 
     @Override
@@ -78,7 +83,7 @@ public class UserServiceImpl implements UserService {
     public CursorPage<PostResponse> listUserPosts(
             String username, CurrentUser viewer, String cursor, int limit) {
         UserEntity user = requireByUsername(username);
-        return postQuery.byAuthor(user.getId(), viewer, cursor, limit);
+        return postQuery.byAuthor(user.getId(), viewer, cursor, PageLimit.validate(limit, props));
     }
 
     @Override
@@ -105,13 +110,15 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional(readOnly = true)
     public CursorPage<UserResponse> listFollowers(String username, String cursor, int limit) {
-        return userQuery.followersOf(requireByUsername(username).getId(), cursor, limit);
+        return userQuery.followersOf(
+                requireByUsername(username).getId(), cursor, PageLimit.validate(limit, props));
     }
 
     @Override
     @Transactional(readOnly = true)
     public CursorPage<UserResponse> listFollowing(String username, String cursor, int limit) {
-        return userQuery.followingOf(requireByUsername(username).getId(), cursor, limit);
+        return userQuery.followingOf(
+                requireByUsername(username).getId(), cursor, PageLimit.validate(limit, props));
     }
 
     private UserEntity requireByUsername(String username) {
